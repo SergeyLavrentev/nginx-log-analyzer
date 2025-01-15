@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timedelta, timezone
 import time
 from multiprocessing import Pool, cpu_count
+from collections import Counter
 
 DEFAULT_LOGFILE = "/var/log/nginx/mapsurfer_ssl_access.log"
 
@@ -95,6 +96,17 @@ def generate_json_report(logs, output_file):
         json.dump(logs, f, default=str, indent=4)
     print(f"JSON report saved to {output_file}")
 
+# Generate an ASCII graph of requests by hour
+def generate_ascii_graph(logs):
+    hourly_counts = Counter(log['date'].strftime('%H') for log in logs)
+    max_count = max(hourly_counts.values(), default=0)
+    scale = max(1, max_count // 50)  # Scale graph to fit within 50 characters wide
+    print("Hour | Requests")
+    print("----------------")
+    for hour in sorted(hourly_counts):
+        bar = '█' * (hourly_counts[hour] // scale)
+        print(f"{hour:02d}:00 | {bar}")
+
 # Analyze response times if available
 def analyze_response_times(logs):
     if not logs or 'response_time' not in logs[0]:
@@ -143,6 +155,8 @@ if __name__ == "__main__":
                         help="Analyze response times if available in logs")
     parser.add_argument("-j", "--json_output", type=str,
                         help="Path to save the JSON report")
+    parser.add_argument("-g", "--graph", action="store_true",
+                        help="Generate an ASCII graph of requests by hour")
 
     args = parser.parse_args()
 
@@ -166,17 +180,14 @@ if __name__ == "__main__":
     if args.last_hours:
         end_time = now
         start_time = end_time - timedelta(hours=args.last_hours)
-    else:
-        # If no time is specified, process all logs
-        start_time = None
-        end_time = None
 
     logs = filter_by_time(logs, start_time, end_time)
 
+    # Display analysis header
     if start_time and end_time:
         print(f"Analyzing logs for the period: {start_time.strftime('%H:%M')} - {end_time.strftime('%H:%M')}")
     else:
-        print("Analyzing all logs")
+        print("Analyzing logs for the entire file")
 
     # Filter by status codes if specified
     if args.statuses:
@@ -204,17 +215,21 @@ if __name__ == "__main__":
     if args.json_output:
         generate_json_report(logs, args.json_output)
 
+    # Generate ASCII graph if requested
+    if args.graph:
+        generate_ascii_graph(logs)
+
     # Display top N requested URLs
     if args.top > 0:
         top_urls = get_top_urls(logs, args.top)
-        print("Top {} URLs:".format(args.top))
+        print(f"Top {args.top} URLs:")
         for url, count in top_urls:
             print(f"{url}: {count}")
 
-    # Display top N IP addresses
-    if args.top > 0:
+    # Display top N IP addresses if IP analysis is explicitly requested
+    if args.ips:
         top_ips = get_top_ips(logs, args.top)
-        print("Top {} IPs:".format(args.top))
+        print(f"Top {args.top} IPs:")
         for ip, count in top_ips:
             print(f"{ip}: {count}")
 
