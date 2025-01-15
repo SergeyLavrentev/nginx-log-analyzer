@@ -3,30 +3,39 @@ import re
 import json
 from datetime import datetime, timedelta, timezone
 import time
+from multiprocessing import Pool, cpu_count
 
 DEFAULT_LOGFILE = "/var/log/nginx/mapsurfer_ssl_access.log"
 
-# Function to load and parse logs from the file
+# Function to parse a single line from the log file
+def parse_log_line(line):
+    match = re.match(r'^(\S+) \S+ \S+ \[(.*?)\] "(.*?)" (\d{3}) \S+ "(.*?)" "(.*?)"$', line)
+    if match:
+        log_date = datetime.strptime(match.group(2), "%d/%b/%Y:%H:%M:%S %z")
+        request_parts = match.group(3).split(' ')
+        request_url = request_parts[1] if len(request_parts) > 1 else "UNKNOWN"
+        return {
+            'ip': match.group(1),
+            'date': log_date,
+            'request': request_url,
+            'method': request_parts[0] if len(request_parts) > 0 else "UNKNOWN",
+            'status': int(match.group(4)),
+            'referer': match.group(5),
+            'user_agent': match.group(6)
+        }
+    return None
+
+# Function to load and parse logs using multiple processes
 def load_logs(logfile):
-    logs = []
     with open(logfile, 'r') as f:
-        for line in f:
-            # Regular expression to match the log format
-            match = re.match(r'^(\S+) \S+ \S+ \[(.*?)\] "(.*?)" (\d{3}) \S+ "(.*?)" "(.*?)"$', line)
-            if match:
-                log_date = datetime.strptime(match.group(2), "%d/%b/%Y:%H:%M:%S %z")
-                request_parts = match.group(3).split(' ')
-                # Extract method and URL, defaulting to "UNKNOWN" if missing
-                request_url = request_parts[1] if len(request_parts) > 1 else "UNKNOWN"
-                logs.append({
-                    'ip': match.group(1),
-                    'date': log_date,
-                    'request': request_url,
-                    'method': request_parts[0] if len(request_parts) > 0 else "UNKNOWN",
-                    'status': int(match.group(4)),
-                    'referer': match.group(5),
-                    'user_agent': match.group(6)
-                })
+        lines = f.readlines()
+
+    # Use multiprocessing Pool to parse lines in parallel
+    with Pool(processes=cpu_count()) as pool:
+        results = pool.map(parse_log_line, lines)
+
+    # Filter out None results from failed parses
+    logs = [log for log in results if log is not None]
     return logs
 
 # Filter logs based on time interval
