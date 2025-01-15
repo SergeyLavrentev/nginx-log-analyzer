@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import argparse
 import re
 import json
@@ -98,14 +100,19 @@ def generate_json_report(logs, output_file):
 
 # Generate an ASCII graph of requests by hour
 def generate_ascii_graph(logs):
-    hourly_counts = Counter(log['date'].strftime('%H') for log in logs)
+    hourly_counts = Counter(int(log['date'].strftime('%H')) for log in logs)
     max_count = max(hourly_counts.values(), default=0)
-    scale = max(1, max_count // 50)  # Scale graph to fit within 50 characters wide
-    print("Hour | Requests")
-    print("----------------")
-    for hour in sorted(hourly_counts):
-        bar = '█' * (hourly_counts[hour] // scale)
-        print(f"{hour:02d}:00 | {bar}")
+    scale = max(1, max_count // 10)  # Scale graph to fit within 10 rows
+
+    print("\nЗапросы")
+    for i in range(10, 0, -1):
+        line = f"{i * scale:3} |"
+        for hour in range(24):
+            count = hourly_counts.get(hour, 0)
+            line += " █" if count >= i * scale else "  "
+        print(line)
+    print("   0 +" + "--" * 24)
+    print("      " + " ".join(f"{hour:02}" for hour in range(24)))
 
 # Analyze response times if available
 def analyze_response_times(logs):
